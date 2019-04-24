@@ -111,3 +111,22 @@ def right_action(coor_gt, coor_cur, radius_gt, radius):
         action = 4
         area = a
     return action
+
+def take_action(action, coordinate, radius):
+    next_coordinate = coordinate.copy()
+    if (action == 0):
+        next_coordinate[0] -= radius/2.
+        next_coordinate[1] += radius/2.
+    elif (action == 1):
+        next_coordinate[0] += radius/2.
+        next_coordinate[1] -= radius/2.
+    elif (action == 2):
+        next_coordinate[0] -= radius/2.
+        next_coordinate[1] -= radius/2.
+    elif (action == 3):
+        next_coordinate[0] += radius/2.
+        next_coordinate[1] += radius/2.
+    else:
+        next_coordinate = coordinate
+    radius *= 0.7
+    return next_coordinate, radius
