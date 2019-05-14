@@ -10,6 +10,12 @@ class_weight_set = torch.tensor([[0.1, 2*math.sqrt(2), 2, 2, math.sqrt(2)],
                                  [2, 2, 2*math.sqrt(2), 0.1, math.sqrt(2)],
                                  [math.sqrt(2), math.sqrt(2), math.sqrt(2), math.sqrt(2), 0.1]])
 
+# class_weight_set = torch.tensor([[1., 1, 1, 1, 1],
+#                                  [1, 1, 1, 1, 1],
+#                                  [1, 1, 1, 1, 1],
+#                                  [1, 1, 1, 1, 1],
+#                                  [1, 1, 1, 1, 1]])
+
 class RNN(nn.Module):
     def __init__(self, input_size, hidden_size, output_size, wifi_size, device, mode='RNN'):
         super(RNN, self).__init__()
@@ -29,6 +35,7 @@ class RNN(nn.Module):
             self.wifi_w = nn.Linear(wifi_size, hidden_size)
             self.gru = nn.GRU(input_size, hidden_size)
             self.i2o = nn.Linear(hidden_size, output_size)
+            self.i2h = nn.Linear(hidden_size, hidden_size)
 
     def forward(self, input, hidden, action_history):
         if self.mode == 'RNN':
@@ -42,6 +49,7 @@ class RNN(nn.Module):
         else:
             output, hidden = self.gru(input.view(1,1,-1), hidden.view(1,1,-1))
             output = self.i2o(output)
+            hidden = self.i2h(hidden)
         return output, hidden
 
 
@@ -53,7 +61,7 @@ class RNN(nn.Module):
 
 class RL_RNN(object):
     def __init__(self, input_size, hidden_size, output_size, wifi_size, lr, device, lambda1):
-        self.net = RNN(input_size, hidden_size, output_size, wifi_size, device, mode='RNN').to(device)
+        self.net = RNN(input_size, hidden_size, output_size, wifi_size, device, mode='GRU').to(device)
         self.optimizer = torch.optim.Adam(self.net.parameters(), lr=lr)
         self.Loss = []
         for i in range(5):
@@ -86,8 +94,9 @@ class RL_RNN(object):
     def back_propagation(self, action_history, action_label, round):
         loss = 0
         for i in range(round):
-            # print("backward {}".format(i))
             loss += self.Loss[action_label[i]](action_history[i].view(1,-1), torch.LongTensor([action_label[i]]))
+            # print("backward {}, {}, {}, {}".format(i, torch.argmax(action_history[i]).item(), torch.LongTensor([action_label[i]]), action_history[i] ))
+            # loss += l
         self.optimizer.zero_grad()
         loss.backward()
         self.optimizer.step()
