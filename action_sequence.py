@@ -14,6 +14,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+sample_list = balance_dataset()
+
 # Setting
 np.set_printoptions(precision=3)
 random.seed
@@ -37,13 +39,8 @@ distances_test, indices_test = nbrs.kneighbors(wifi_loc_time_test[:,:520])
 
 # Training setting
 n_episodes = 1000
-total_loss = np.zeros((n_episodes,))
 radius_gt = 0.5
 delta = 0.5
-avg_distance = np.zeros((n_episodes,2))
-avg_iow = np.zeros((n_episodes,2))
-avg_grading = np.zeros((n_episodes,5))
-avg_conti_score = np.zeros((n_episodes,))
 batch_size = 1
 action_history_batch = torch.zeros((batch_size, 5, 5))
 action_label_batch = np.zeros((batch_size,5))
@@ -52,19 +49,22 @@ test_distance = np.zeros((2,))
 test_iow = np.zeros((2,))
 test_grading = np.zeros((5,))
 
-
+# right_action_log = np.zeros((len(wifi_loc_time), 5))
+ 
 # Model setting
 input_size = 3
 hidden_size = 32
 output_size = 5
 wifi_size = 520
-lr = 0.005
+lr = 0.0001
 lambda1 = lambda e: lr*(0.9**(e/1000))
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 rl_rnn = RL_RNN(input_size, hidden_size, output_size, wifi_size, lr, device, lambda1)
-# rl_rnn.net.load_state_dict(torch.load('model.ckpt'))
+# rl_rnn.net.load_state_dict(torch.load('model_round_5.ckpt'))
+# rl_rnn.net.eval()
 
 for round_idx in range(1,6):
+# for round_idx in range(1,2):
     total_loss = np.zeros((5, n_episodes,))
     avg_distance = np.zeros((5, n_episodes,2))
     avg_iow = np.zeros((5, n_episodes,2))
@@ -74,14 +74,19 @@ for round_idx in range(1,6):
     avg_round_rad = np.zeros((5, n_episodes,5))
     # Training process
     for e in range(n_episodes):
+    # for e in range(1):
         rl_rnn.net.train()
         if e % 100 == 99:
             rl_rnn.peek_weights()
         rl_rnn.lr_sche.step()
 
-        y_true = np.zeros((len(wifi_loc_time),5))
-        y_pred = np.zeros((len(wifi_loc_time),5))
-        for i in range(len(wifi_loc_time)):
+        # y_true = np.zeros((len(wifi_loc_time),5))
+        # y_pred = np.zeros((len(wifi_loc_time),5))
+        y_true = np.zeros((len(sample_list),5))
+        y_pred = np.zeros((len(sample_list),5))
+        iter_sample_list = 0
+        # for i in range(len(wifi_loc_time)):
+        for i in sample_list:
             ## 1. KNN locates initial coordinates and radius
             Hx = 0.
             Hy = 0.
@@ -110,6 +115,7 @@ for round_idx in range(1,6):
                 right = right_action(wifi_loc_time[i, 520:522], right_coor, radius_gt, right_radius)
                 right_coor, right_radius = take_action(right, right_coor, right_radius)
                 right_action_set.append(right)
+            # right_action_log[i] = np.array(right_action_set)
 
             input = np.concatenate((coordinate, np.array([radius])))
             # ver. 1
@@ -140,8 +146,8 @@ for round_idx in range(1,6):
                 total_loss[round_idx-1,e] += loss
 
             # confusion_matrix_stack
-            y_true[i] = np.array(right_action_set)
-            y_pred[i] = ans_sheet
+            y_true[iter_sample_list] = np.array(right_action_set)
+            y_pred[iter_sample_list] = ans_sheet
 
             # compute distance after each of 5 rounds & radius
             for k in range(5):
@@ -151,14 +157,15 @@ for round_idx in range(1,6):
 
         
 
-        avg_round_dis[round_idx-1,e,:] /= len(wifi_loc_time)
-        avg_round_rad[round_idx-1,e,:] /= len(wifi_loc_time)
-        avg_distance[round_idx-1,e,:] /= len(wifi_loc_time)
+        avg_round_dis[round_idx-1,e,:] /= len(sample_list) #/= len(wifi_loc_time)
+        avg_round_rad[round_idx-1,e,:] /= len(sample_list) #/= len(wifi_loc_time)
+        avg_distance[round_idx-1,e,:] /= len(sample_list) #/= len(wifi_loc_time)
         avg_grading[round_idx-1,e, :] #/= len(wifi_loc_time)
-        avg_iow[round_idx-1,e,:] /= len(wifi_loc_time)
-        avg_conti_score[round_idx-1,e] /= len(wifi_loc_time)
+        avg_iow[round_idx-1,e,:] /= len(sample_list) #/= len(wifi_loc_time)
+        avg_conti_score[round_idx-1,e] /= len(sample_list) #/= len(wifi_loc_time)
         print("Epoch -", e, round_idx,"avg loss :", total_loss[round_idx-1,e], ", lr is :", lambda1(e), ", avg distance:", avg_distance[round_idx-1,e], "\navg IoW:", avg_iow[round_idx-1,e], ", avg cont_score:", avg_conti_score[round_idx-1,e])
         print("Accuracy of 5 rounds:", avg_grading[round_idx-1,e])
+        print("Accuracy of 5 rounds:", avg_grading[round_idx-1,e]/len(sample_list))
         print("Round dis: ", avg_round_dis[round_idx-1,e])
         print("Round rad: ", avg_round_rad[round_idx-1,e])
 
@@ -215,51 +222,53 @@ for round_idx in range(1,6):
 
         print("Test distance: {}, iow: {}\ngrading:{}, conti_score:{}\n".format(test_distance/len(wifi_loc_time_test), test_iow/len(wifi_loc_time_test), test_grading/len(wifi_loc_time_test), test_conti_score/len(wifi_loc_time_test)))
         
-    torch.save(rl_rnn.net.state_dict(), 'model_round_'+str(round_idx)+'_same_w.ckpt')
+    torch.save(rl_rnn.net.state_dict(), 'model_round_'+str(round_idx)+'_balanced.ckpt')
+
+# np.savetxt("right_action_log_%d_%d.csv"%(floor, building), right_action_log, delimiter=',')
 
 # Plot
 for i in range(5):
-    plt.plot([w for w in range(n_episodes)], avg_distance[i,:,0], 'r-', label='model')
-    plt.plot([w for w in range(n_episodes)], avg_distance[i,:,1], 'b-', label='right')
-plt.title("Distance_round ")
+    plt.plot([w for w in range(n_episodes*i, n_episodes*(i+1))], avg_distance[i,:,0], 'r-', label='model')
+    plt.plot([w for w in range(n_episodes*i, n_episodes*(i+1))], avg_distance[i,:,1], 'b-', label='right')
+plt.title("Distance_round")
 plt.legend()
 plt.savefig("Distance.png")
 plt.clf()
 
 for i in range(5):
-    plt.plot([w for w in range(n_episodes)], avg_iow[i,:,0], 'r-', label='model')
-    plt.plot([w for w in range(n_episodes)], avg_iow[i,:,1], 'b-', label='right')
-plt.title("IoW_round ")
+    plt.plot([w for w in range(n_episodes*i, n_episodes*(i+1))], avg_iow[i,:,0], 'r-', label='model')
+    plt.plot([w for w in range(n_episodes*i, n_episodes*(i+1))], avg_iow[i,:,1], 'b-', label='right')
+plt.title("IoW_round")
 plt.legend()
 plt.savefig("IoW.png")
 plt.clf()
 
 for i in range(5):
     for k in range(5):
-        plt.plot([w for w in range(n_episodes)], avg_grading[i,:,k], label='Round '+str(k+1))
-plt.title("Hit rate of each round_round ")
+        plt.plot([w for w in range(n_episodes*i, n_episodes*(i+1))], avg_grading[i,:,k], label='R'+str(k+1))
+plt.title("Hit rate of each round_round")
 plt.legend()
 plt.savefig("Grading.png")
 plt.clf()
 
 for i in range(5):
-    plt.plot([w for w in range(n_episodes)], avg_conti_score[i])
-plt.title("Continuous hit score_round ")
+    plt.plot([w for w in range(n_episodes*i, n_episodes*(i+1))], avg_conti_score[i])
+plt.title("Continuous hit score_round")
 plt.savefig("conti.png")
 plt.clf()
 
 for i in range(5):
     for k in range(5):
-        plt.plot([w for w in range(n_episodes)], avg_round_dis[i,:,k], label='Round '+str(k+1))
-plt.title("Distance after each round_round ")
+        plt.plot([w for w in range(n_episodes*i, n_episodes*(i+1))], avg_round_dis[i,:,k], label='R'+str(k+1))
+plt.title("Distance after each round_round")
 plt.legend()
 plt.savefig("Round_dis.png")
 plt.clf()
 
 for i in range(5):
     for k in range(5):
-        plt.plot([w for w in range(n_episodes)], avg_round_rad[i,:,k], label='Round '+str(k+1))
-plt.title("Radius after each round_round ")
+        plt.plot([w for w in range(n_episodes*i, n_episodes*(i+1))], avg_round_rad[i,:,k], label='R'+str(k+1))
+plt.title("Radius after each round_round")
 plt.legend()
 plt.savefig("Round_rad.png")
 plt.clf()

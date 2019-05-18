@@ -73,45 +73,6 @@ def dis(coor_gt, coor_cur):
     dis_cur = math.sqrt((coor_gt[0]-coor_cur[0])**2 + (coor_gt[1]-coor_cur[1])**2)
     return dis_cur
 
-
-def right_action(coor_gt, coor_cur, radius_gt, radius):
-    next_coordinate = coor_cur.copy()
-    action = 0
-    next_coordinate[0] -= radius/2.
-    next_coordinate[1] += radius/2.
-    area = IoW(coor_gt, next_coordinate, radius_gt, radius*0.7)
-
-    next_coordinate = coor_cur.copy()
-    next_coordinate[0] += radius/2.
-    next_coordinate[1] -= radius/2.
-    a = IoW(coor_gt, next_coordinate, radius_gt, radius*0.7)
-    if area < a:
-        action = 1
-        area = a
-
-    next_coordinate = coor_cur.copy()
-    next_coordinate[0] -= radius/2.
-    next_coordinate[1] -= radius/2.
-    a = IoW(coor_gt, next_coordinate, radius_gt, radius*0.7)
-    if area < a:
-        action = 2
-        area = a
-    
-    next_coordinate = coor_cur.copy()
-    next_coordinate[0] += radius/2.
-    next_coordinate[1] += radius/2.
-    a = IoW(coor_gt, next_coordinate, radius_gt, radius*0.7)
-    if area < a:
-        action = 3
-        area = a
-
-    next_coordinate = coor_cur.copy()
-    a = IoW(coor_gt, next_coordinate, radius_gt, radius*.7)
-    if area < a:
-        action = 4
-        area = a
-    return action
-
 def take_action(action, coordinate, radius):
     next_coordinate = coordinate.copy()
     if (action == 0):
@@ -130,3 +91,50 @@ def take_action(action, coordinate, radius):
         next_coordinate = coordinate
     radius *= 0.7
     return next_coordinate, radius
+
+def right_action(coor_gt, coor_cur, radius_gt, radius):
+    next_coordinate, next_radius = take_action(0, coor_cur, radius)
+    max_area = IoW(coor_gt, next_coordinate, radius_gt, next_radius)
+    best_action = 0
+    for i in range(1,5):
+        next_coordinate, next_radius = take_action(i, coor_cur, radius)
+        a = IoW(coor_gt, next_coordinate, radius_gt, next_radius)
+        if max_area < a:
+            best_action = i
+            max_area = a
+
+    return best_action
+
+def balance_dataset(fn="right_actions/right_action_log_2_0.csv"):
+    with open(fn, newline='') as csvfile:
+        right_action_log = []
+        rows = csv.reader(csvfile)
+        for row in rows:
+            line = []
+            for num in row:
+                line.append(float(num))
+            right_action_log.append(line)
+
+        right_action_log = np.array(right_action_log, dtype=int).T
+
+    pairs =np.zeros((5, 2, 5),dtype=int) ## unique and count
+    minor_list = np.array([x for x in range(right_action_log.shape[1])])
+    for i in range(5):
+        pairs[i,0], pairs[i,1] = np.unique(right_action_log[i], return_counts=True)
+        pairs[i,0] = pairs[i,0, pairs[i,1,:].argsort()]
+        pairs[i,1] = pairs[i,1, pairs[i,1,:].argsort()]
+        minor = np.where(right_action_log[i] != pairs[i,0,-1])
+        minor_list = np.concatenate((minor_list, minor[0]))
+        print("round",i,pairs[i,0],pairs[i,1], minor[0].shape)
+
+    print(len(minor_list))
+
+    return minor_list
+
+
+    # pick up minor class
+
+    
+    
+
+
